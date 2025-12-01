@@ -11,9 +11,9 @@ const ARTWORK_BASE_URL =
 const STORAGE_KEY = "pokedex-caught";
 
 // ---------- STATE ----------
-let nextPageUrl = `${API_BASE_URL}?offset=0&limit=20`;
-let caughtSet = new Set(); // Pokémon ids as strings
-const pokemonMap = new Map(); // id -> { id, name }
+let nextPageUrl = API_BASE_URL + "?offset=0&limit=20";
+let caughtIds = []; // store Pokémon ids as strings
+const pokemonById = {}; // id -> { id, name }
 
 // ---------- DOM REFERENCES ----------
 const gridEl = document.querySelector("#pokemon-grid");
@@ -31,11 +31,11 @@ function getPokemonIdFromUrl(url) {
 }
 
 function getThumbnailUrl(id) {
-  return `${THUMBNAIL_BASE_URL}/${id}.png`;
+  return THUMBNAIL_BASE_URL + "/" + id + ".png";
 }
 
 function getArtworkUrl(id) {
-  return `${ARTWORK_BASE_URL}/${id}.png`;
+  return ARTWORK_BASE_URL + "/" + id + ".png";
 }
 
 function loadCaughtFromStorage() {
@@ -44,31 +44,33 @@ function loadCaughtFromStorage() {
 
   try {
     const ids = JSON.parse(stored);
-    caughtSet = new Set(ids.map(String));
+    if (Array.isArray(ids)) {
+      caughtIds = ids.map(String);
+    }
   } catch (error) {
     console.error("Failed to parse caught Pokémon from storage", error);
   }
 }
 
 function saveCaughtToStorage() {
-  const ids = Array.from(caughtSet);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(caughtIds));
 }
 
 function isCaught(id) {
-  return caughtSet.has(String(id));
+  return caughtIds.includes(String(id));
 }
 
 // ---------- RENDER HELPERS ----------
 
 function createPokemonCard(pokemon) {
-  const { id, name } = pokemon;
+  const id = String(pokemon.id);
+  const name = pokemon.name;
 
   const card = document.createElement("button");
   card.type = "button";
   card.className = "pokemon-card";
   card.dataset.id = id;
-  card.setAttribute("aria-label", `View details for ${name}`);
+  card.setAttribute("aria-label", "View details for " + name);
 
   if (isCaught(id)) {
     card.classList.add("caught");
@@ -76,12 +78,12 @@ function createPokemonCard(pokemon) {
 
   const img = document.createElement("img");
   img.src = getThumbnailUrl(id);
-  img.alt = `${name} thumbnail`;
+  img.alt = name + " thumbnail";
 
-  // Pokémon number line like #001
+  // Pokémon number line like #1
   const numberEl = document.createElement("span");
   numberEl.className = "pokemon-number";
-  numberEl.textContent = `#${String(id).padStart(3, "0")}`;
+  numberEl.textContent = "#" + id;
 
   const nameEl = document.createElement("span");
   nameEl.className = "pokemon-name";
@@ -99,25 +101,29 @@ function createPokemonCard(pokemon) {
   }
 
   // Click to load details
-  card.addEventListener("click", () => {
-    showPokemonDetails(id, name);
+  card.addEventListener("click", function () {
+    showPokemonDetails(id);
   });
 
   return card;
 }
 
 function renderPokemonGrid(pokemonArray) {
-  pokemonArray.forEach((pokemon) => {
+  pokemonArray.forEach(function (pokemon) {
     const card = createPokemonCard(pokemon);
     gridEl.appendChild(card);
   });
 }
 
 function updateCardCaughtState(id) {
-  const card = gridEl.querySelector(`.pokemon-card[data-id="${id}"]`);
+  const card = gridEl.querySelector('.pokemon-card[data-id="' + id + '"]');
   if (!card) return;
 
-  card.classList.toggle("caught", isCaught(id));
+  if (isCaught(id)) {
+    card.classList.add("caught");
+  } else {
+    card.classList.remove("caught");
+  }
 
   // Remove old badge if any
   const oldBadge = card.querySelector(".badge");
@@ -134,153 +140,171 @@ function updateCardCaughtState(id) {
 function renderCaughtList() {
   caughtListEl.innerHTML = "";
 
-  const ids = Array.from(caughtSet).sort((a, b) => Number(a) - Number(b));
+  const sortedIds = caughtIds
+    .slice()
+    .sort(function (a, b) {
+      return Number(a) - Number(b);
+    });
 
-  ids.forEach((id) => {
-    const info = pokemonMap.get(id);
+  sortedIds.forEach(function (id) {
+    const info = pokemonById[id];
     const li = document.createElement("li");
     li.className = "caught-list-item";
-    li.textContent = info ? info.name : `Pokémon #${id}`;
+    li.textContent = info ? info.name : "Pokémon #" + id;
+    caughtListEl.appendChild(li);
   });
 
-  caughtCountEl.textContent = ids.length.toString();
+  caughtCountEl.textContent = String(sortedIds.length);
 }
 
 // ---------- FETCH & DATA FLOW ----------
 
-async function fetchPokemonPage() {
+function fetchPokemonPage() {
   if (!nextPageUrl) return;
 
-  try {
-    const response = await fetch(nextPageUrl);
-    if (!response.ok) {
-      throw new Error("Failed to load Pokémon list");
-    }
+  fetch(nextPageUrl)
+    .then(function (response) {
+      if (!response.ok) {
+        throw new Error("Failed to load Pokémon list");
+      }
+      return response.json();
+    })
+    .then(function (data) {
+      nextPageUrl = data.next;
 
-    const data = await response.json();
-    nextPageUrl = data.next;
+      const simplePokemonList = data.results.map(function (entry) {
+        const id = getPokemonIdFromUrl(entry.url);
+        const pokemon = {
+          id: id,
+          name: entry.name,
+        };
+        pokemonById[id] = pokemon;
+        return pokemon;
+      });
 
-    const simplePokemonList = data.results.map((entry) => {
-      const id = getPokemonIdFromUrl(entry.url);
-      const pokemon = {
-        id,
-        name: entry.name,
-      };
-      pokemonMap.set(id, pokemon);
-      return pokemon;
+      renderPokemonGrid(simplePokemonList);
+      renderCaughtList();
+    })
+    .catch(function (error) {
+      console.error(error);
     });
-
-    renderPokemonGrid(simplePokemonList);
-    renderCaughtList();
-  } catch (error) {
-    console.error(error);
-  }
 }
 
-async function showPokemonDetails(id) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/${id}/`);
-    if (!response.ok) {
-      throw new Error("Failed to load Pokémon details");
-    }
+function showPokemonDetails(id) {
+  const url = API_BASE_URL + "/" + id + "/";
 
-    const data = await response.json();
+  fetch(url)
+    .then(function (response) {
+      if (!response.ok) {
+        throw new Error("Failed to load Pokémon details");
+      }
+      return response.json();
+    })
+    .then(function (data) {
+      const name = data.name;
+      const types = data.types.map(function (t) {
+        return t.type.name;
+      });
+      const abilities = data.abilities.map(function (a) {
+        return a.ability.name;
+      });
+      const height = data.height;
+      const weight = data.weight;
 
-    const name = data.name;
-    const types = data.types.map((t) => t.type.name);
-    const abilities = data.abilities.map((a) => a.ability.name);
-    const height = data.height;
-    const weight = data.weight;
+      if (!pokemonById[id]) {
+        pokemonById[id] = { id: id, name: name };
+      }
 
-    // Make sure map has it
-    if (!pokemonMap.has(String(id))) {
-      pokemonMap.set(String(id), { id: String(id), name });
-    }
+      const caught = isCaught(id);
 
-    const caught = isCaught(id);
+      const typesHtml = types
+        .map(function (type) {
+          return '<li class="chip" style="text-transform: capitalize;">' + type + "</li>";
+        })
+        .join("");
 
-    detailsEl.innerHTML = `
-      <div class="details-header">
-        <img src="${getArtworkUrl(id)}" alt="${name} official artwork" />
-        <div>
-          <h3 class="details-name">${name}</h3>
-          <p class="details-meta">#${String(id).padStart(3, "0")}</p>
-          <p class="details-meta">
-            Height: ${height} • Weight: ${weight}
-          </p>
+      const abilitiesHtml = abilities
+        .map(function (ability) {
+          return '<li class="chip" style="text-transform: capitalize;">' + ability + "</li>";
+        })
+        .join("");
+
+      detailsEl.innerHTML = `
+        <div class="details-header">
+          <img src="${getArtworkUrl(id)}" alt="${name} official artwork" />
+          <div>
+            <h3 class="details-name">${name}</h3>
+            <p class="details-meta">#${id}</p>
+            <p class="details-meta">
+              Height: ${height} • Weight: ${weight}
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div class="details-body">
-        <div>
-          <strong>Types:</strong>
-          <ul class="chip-list">
-            ${types
-              .map(
-                (type) =>
-                  `<li class="chip" style="text-transform: capitalize;">${type}</li>`
-              )
-              .join("")}
-          </ul>
+        <div class="details-body">
+          <div>
+            <strong>Types:</strong>
+            <ul class="chip-list">
+              ${typesHtml}
+            </ul>
+          </div>
+          <div>
+            <strong>Abilities:</strong>
+            <ul class="chip-list">
+              ${abilitiesHtml}
+            </ul>
+          </div>
         </div>
-        <div>
-          <strong>Abilities:</strong>
-          <ul class="chip-list">
-            ${abilities
-              .map(
-                (ability) =>
-                  `<li class="chip" style="text-transform: capitalize;">${ability}</li>`
-              )
-              .join("")}
-          </ul>
-        </div>
-      </div>
 
-      <div class="details-actions">
-        <button
-          class="btn ${caught ? "btn-secondary" : "btn-primary"} js-toggle-caught"
-          data-id="${id}"
-        >
-          ${caught ? "Release" : "Mark as caught"}
-        </button>
-      </div>
-    `;
-  } catch (error) {
-    console.error(error);
-    detailsEl.innerHTML = `
-      <p class="placeholder-text">
-        Unable to load Pokémon details right now. Please try again.
-      </p>
-    `;
-  }
+        <div class="details-actions">
+          <button
+            class="btn ${caught ? "btn-secondary" : "btn-primary"} js-toggle-caught"
+            data-id="${id}"
+          >
+            ${caught ? "Release" : "Mark as caught"}
+          </button>
+        </div>
+      `;
+    })
+    .catch(function (error) {
+      console.error(error);
+      detailsEl.innerHTML = `
+        <p class="placeholder-text">
+          Unable to load Pokémon details right now. Please try again.
+        </p>
+      `;
+    });
 }
 
 // ---------- EVENT LISTENERS ----------
 
 // Load more button
-loadMoreBtn.addEventListener("click", () => {
+loadMoreBtn.addEventListener("click", function () {
   fetchPokemonPage();
 });
 
 // Toggle caught from details panel (event delegation)
-detailsEl.addEventListener("click", (event) => {
+detailsEl.addEventListener("click", function (event) {
   const target = event.target;
 
   if (target.classList.contains("js-toggle-caught")) {
-    const id = target.dataset.id;
+    const id = target.getAttribute("data-id");
     if (!id) return;
 
     if (isCaught(id)) {
-      caughtSet.delete(String(id));
+      // remove
+      caughtIds = caughtIds.filter(function (storedId) {
+        return storedId !== String(id);
+      });
     } else {
-      caughtSet.add(String(id));
+      // add
+      caughtIds.push(String(id));
     }
 
     saveCaughtToStorage();
     updateCardCaughtState(id);
     renderCaughtList();
 
-    // Update button label + style
     const nowCaught = isCaught(id);
     target.textContent = nowCaught ? "Release" : "Mark as caught";
     target.classList.toggle("btn-primary", !nowCaught);
