@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Pokedex – MTM6302 Final Project</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-main">
+      <h1 class="app-title">Pokedex</h1>
+      <p class="app-subtitle">
+        Browse Pokémon, see their details, and keep track of which ones you've caught.
+      </p>
+    </div>
+  </header>
+
+  <main class="app-layout">
+    <!-- LEFT: Pokémon grid + load more -->
+    <section class="panel panel-main" aria-label="Pokémon list">
+      <div class="panel-header">
+        <h2>Pokémon</h2>
+        <p class="panel-hint">Tap or click a Pokémon to see more details.</p>
+      </div>
+
+      <div id="pokemon-grid" class="pokemon-grid" aria-live="polite">
+        <!-- Pokémon cards get injected -->
+      </div>
+
+      <button id="load-more" class="btn btn-primary">
+        Load more Pokémon
+      </button>
+    </section>
+
+    <!-- RIGHT: Details & caught list -->
+    <section class="panel panel-side">
+      <section aria-label="Selected Pokémon details" class="details-section">
+        <h2>Details</h2>
+        <div id="pokemon-details" class="pokemon-details">
+          <p class="placeholder-text">
+            Select a Pokémon from the left to see more information.
+          </p>
+        </div>
+      </section>
+
+      <section aria-label="Caught Pokémon" class="caught-section">
+        <div class="caught-header">
+          <h2>Caught Pokémon</h2>
+          <span id="caught-count" class="caught-count">0</span>
+        </div>
+        <p class="panel-hint">
+          Pokémon you mark as "caught" will appear here and be saved in your browser.
+        </p>
+        <ul id="caught-list" class="caught-list">
+          <!-- Caught Pokémon names here -->
+        </ul>
+      </section>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>
+      Built with the <a href="https://pokeapi.co/" target="_blank" rel="noreferrer">PokeAPI</a>.
+    </p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
